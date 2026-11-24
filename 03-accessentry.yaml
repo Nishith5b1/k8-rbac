@@ -15,3 +15,19 @@ accessConfig:
         - devops-trainees # groups can used to give permissions via RBAC
 
 # eksctl create accessentry -f 03-accessentry.yaml
+
+#example:
+
+  # accessEntries:
+  #   - principalARN: arn:aws:iam::160885265516:user/ram
+  #     type: STANDARD # optional Type
+  #     kubernetesGroups: # optional Kubernetes groups
+  #       - devops-trainees # groups can used to give permissions via RBAC
+  #   - principalARN: arn:aws:iam::160885265516:user/raheem
+  #     type: STANDARD # optional Type
+  #     kubernetesGroups: # optional Kubernetes groups
+  #       - devops-trainees # groups can used to give permissions via RBAC
+  #   - principalARN: arn:aws:iam::160885265516:user/sivakumar
+  #     type: STANDARD # optional Type
+  #     kubernetesGroups: # optional Kubernetes groups
+  #       - devops-tls # groups can used to give permissions via RBAC
