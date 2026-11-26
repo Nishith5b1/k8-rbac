@@ -135,3 +135,28 @@ items:
 kind: List
 metadata:
   resourceVersion: ""
+
+Testing:
+-------------
+[ ec2-user@ip-172-31-10-60 ~/k8-rbac ]$ kubectl apply -f 06-sa.yaml
+pod/aws-cli unchanged
+
+18.232.108.70 | 172.31.10.60 | t3.micro | https://github.com/Nishith5b1/k8-rbac.git
+[ ec2-user@ip-172-31-10-60 ~/k8-rbac ]$ kubectl get pods -n roboshop
+NAME      READY   STATUS    RESTARTS   AGE
+aws-cli   1/1     Running   0          19s
+
+18.232.108.70 | 172.31.10.60 | t3.micro | https://github.com/Nishith5b1/k8-rbac.git
+[ ec2-user@ip-172-31-10-60 ~/k8-rbac ]$ kubectl exec -it aws-cli -n roboshop -- /bin/bash
+bash-5.2# aws secretsmanager get-secret-value --secret-id nishith/prod
+{
+    "ARN": "arn:aws:secretsmanager:us-east-1:474668420119:secret:nishith/prod-AcQqcD",
+    "Name": "nishith/prod",
+    "VersionId": "f8036ab8-1d49-4081-a6f9-007158cd8d7e",
+    "SecretString": "{\"nishith\":\"nani\"}",
+    "VersionStages": [
+        "AWSCURRENT"
+    ],
+    "CreatedDate": "2026-11-26T08:17:38.260000+00:00"
+}
+bash-5.2#
