@@ -1,0 +1,137 @@
+Service account
+===============
+sa are used to provide access to the pods so that pods can have perform CRUD on AWS resources whenever required..
+
+1. create sa
+2. create IAM role with IAM permission
+3. map IAM role with sa through annotations
+4. run pod with sa
+
+create OIDC provider, openid connect used to trust third party applications through tokens. This setup enables IAM roles for Kubernetes service accounts (IRSA)
+
+eksctl utils associate-iam-oidc-provider --cluster roboshop --approve
+
+whenever a namespace is created, kubernetes creates a default sa with 0 permissions. by default all the pods run in that namespace using default sa..
+
+eksctl create iamserviceaccount \
+  --cluster=roboshop \
+  --namespace=roboshop \
+  --name=roboshop-secret-reader \
+  --attach-policy-arn=arn:aws:iam::160885265516:policy/RoboShopMySQLSecretReader \
+  --approve
+  
+A role is created for EC2 service.
+
+aws secretsmanager get-secret-value --secret-id roboshop/dev/mysql_root_password
+
+--------------------------- More Information about OIDC provider-------------------------------------------------
+
+The OIDC provider is the piece that lets AWS trust identities issued by your Kubernetes cluster. Without it, IAM has no way to know that a request from your pod is legitimate.
+
+The problem it solves
+
+IAM only understands AWS identities (users, roles). Your pod's ServiceAccount is a Kubernetes concept, and AWS knows nothing about it. You need a bridge that says: "when this specific ServiceAccount in this cluster asks for AWS credentials, let it assume this IAM role."
+
+How the flow works (IRSA: IAM Roles for Service Accounts)
+EKS acts as an OIDC identity provider. Every EKS cluster has an OIDC issuer URL (something like https://oidc.eks.ap-south-1.amazonaws.com/id/ABC123...). The cluster can sign JWT tokens.
+You register that issuer in IAM as an "IAM OIDC identity provider." This is the step people mean by "create the OIDC provider." It tells IAM: "trust tokens signed by this issuer."
+A pod using an annotated ServiceAccount gets a token injected. The EKS pod identity webhook mounts a signed JWT (projected service account token) into the pod and sets env vars AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE.
+The AWS SDK calls sts:AssumeRoleWithWebIdentity, sending that JWT.
+STS validates the token against the OIDC provider you registered (checks the signature and issuer), then checks the role's trust policy.
+STS returns temporary credentials scoped to that role.
+The trust policy ties it together
+
+The IAM role's trust policy references the OIDC provider and restricts which ServiceAccount can use it:
+
+json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Federated": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.ap-south-1.amazonaws.com/id/ABC123"
+  },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {
+      "oidc.eks.ap-south-1.amazonaws.com/id/ABC123:sub": "system:serviceaccount:my-namespace:my-sa",
+      "oidc.eks.ap-south-1.amazonaws.com/id/ABC123:aud": "sts.amazonaws.com"
+    }
+  }
+}
+
+The Principal says "trust this OIDC provider," and the sub condition says "but only for this exact ServiceAccount in this namespace."
+
+Why this is better than the alternatives
+No long-lived access keys stored in secrets.
+Pod-level least privilege: different pods get different roles, unlike attaching a role to the node (where every pod on the node shares it).
+Credentials are short-lived and auto-rotated.
+Note: EKS Pod Identity
+
+AWS also offers EKS Pod Identity, a newer alternative that doesn't require you to create an OIDC provider at all. It uses an agent running on the nodes instead, and simplifies the trust policy (a single pods.eks.amazonaws.com principal). IRSA with OIDC still works and is widely used, but for new setups Pod Identity is worth considering.
+
+In short: the SA and IAM role define what a pod can access, and the OIDC provider is what lets AWS verify that the pod really is who it claims to be.
+
+------------------------------------------------------------------
+
+[ ec2-user@ip-172-31-10-60 ~/eksctl ]$ eksctl utils associate-iam-oidc-provider --cluster roboshop --approve
+2026-11-26 12:03:30 [ℹ]  will create IAM Open ID Connect provider for cluster "roboshop" in "us-east-1"
+2026-11-26 12:03:30 [✔]  created IAM Open ID Connect provider for cluster "roboshop" in "us-east-1"
+
+
+After creating IAM ODIC provider
+Create IAM policy -> Go to IAM -> click on create policy -> choose service -> secrets manager -> Actions allowed(choose what you want) -> under resources(choose All or specific ARN)
+-> I selected specific -> under specific i provide my secret ARN -> next -> create policy
+
+[ ec2-user@ip-172-31-10-60 ~/eksctl ]$ eksctl create iamserviceaccount \
+  --cluster=roboshop \
+  --namespace=roboshop \
+  --name=roboshop-secret-reader \
+  --attach-policy-arn=arn:aws:iam::474668420119:policy/nishithtestingsa \ # This is policy ARN 
+  --approve
+2026-11-26 12:05:21 [ℹ]  1 iamserviceaccount (roboshop/roboshop-secret-reader) was included (based on the include/exclude rules)
+2026-11-26 12:05:21 [!]  serviceaccounts that exist in Kubernetes will be excluded, use --override-existing-serviceaccounts to override
+2026-11-26 12:05:21 [ℹ]  1 task: {
+    2 sequential sub-tasks: {
+        create IAM role for serviceaccount "roboshop/roboshop-secret-reader",
+        create serviceaccount "roboshop/roboshop-secret-reader",
+    } }2026-11-26 12:05:21 [ℹ]  building iamserviceaccount stack "eksctl-roboshop-addon-iamserviceaccount-roboshop-roboshop-secret-reader"
+2026-11-26 12:05:22 [ℹ]  deploying stack "eksctl-roboshop-addon-iamserviceaccount-roboshop-roboshop-secret-reader"
+2026-11-26 12:05:22 [ℹ]  waiting for CloudFormation stack "eksctl-roboshop-addon-iamserviceaccount-roboshop-roboshop-secret-reader"
+2026-11-26 12:05:52 [ℹ]  waiting for CloudFormation stack "eksctl-roboshop-addon-iamserviceaccount-roboshop-roboshop-secret-reader"
+2026-11-26 12:05:52 [ℹ]  created namespace "roboshop"
+2026-11-26 12:05:52 [ℹ]  created serviceaccount "roboshop/roboshop-secret-reader"
+
+18.232.108.70 | 172.31.10.60 | t3.micro | https://github.com/Nishith5b1/eksctl.git
+
+# The above service account creation automatically creates role and attaches this policy
+[ ec2-user@ip-172-31-10-60 ~/eksctl ]$ kubectl get sa -n roboshop
+NAME                     AGE
+default                  89s
+roboshop-secret-reader   89s
+
+18.232.108.70 | 172.31.10.60 | t3.micro | https://github.com/Nishith5b1/eksctl.git
+[ ec2-user@ip-172-31-10-60 ~/eksctl ]$ kubectl get sa -n roboshop -o yaml
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    creationTimestamp: "2026-11-26T12:05:52Z"
+    name: default
+    namespace: roboshop
+    resourceVersion: "5290"
+    uid: adb24ba5-bbbb-480d-9011-c0c1ca8c38df
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::474668420119:role/eksctl-roboshop-addon-iamserviceaccount-robos-Role1-hLSfUHK6qGhr # This is the role name
+    creationTimestamp: "2026-11-26T12:05:52Z"
+    labels:
+      app.kubernetes.io/managed-by: eksctl
+    name: roboshop-secret-reader
+    namespace: roboshop
+    resourceVersion: "5289"
+    uid: 8f769c28-91f2-4264-8cde-e94076ba52dc
+kind: List
+metadata:
+  resourceVersion: ""
